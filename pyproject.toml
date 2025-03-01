@@ -11,4 +11,6 @@ dependencies = [
     "torch-tb-profiler>=0.4.3",
     "torch>=2.6.0",
     "pybind11>=2.13.6",
+    "lightning>=2.5.0.post0",
+    "black>=25.1.0",
 ]

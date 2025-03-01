@@ -11,27 +11,24 @@ from torch.utils.tensorboard import SummaryWriter
 
 # initialize simulation environment
 args = environment.EnvArgs()
-with open('config.yaml', 'r') as f:
+with open("config.yaml", "r") as f:
     config = yaml.safe_load(f)
 for key, value in config.items():
     setattr(args, key, value)
-# set target_distribution
-# target = [0.0] * (config['n_side']**2 // 2)
-# target[100] = 25 # target: 50 clusters, each of size 100
-# target a certain number of clusters
-target = 50
-args.target = torch.tensor(target)
+# set target
+target = torch.tensor(50)
+args.target = target
 env = environment.KMCEnv(args)
 
 # initialize replay buffer
 rb = rb.ReplayBuffer(1000)
 
 # initialize actions
-if args.update_type == 'temp':
-    actions = torch.linspace(0, 2, 11)[1:].view(-1,1)
+if args.update_type == "temp":
+    actions = torch.linspace(0, 2, 11)[1:].view(-1, 1)
     action_dim = actions.shape[0]
 else:
-    actions = torch.linspace(-args.enn, args.enn, int(4*args.enn)).view(-1,1)
+    actions = torch.linspace(-args.enn, args.enn, int(4 * args.enn)).view(-1, 1)
     action_dim = actions.shape[0]
 
 # initialize logger
@@ -46,7 +43,7 @@ model = nn.DQN(
     writer=writer,
     lr=0.001,
     epsilon=0.1,
-    gamma=0.99
+    gamma=0.99,
 )
 
 
@@ -75,11 +72,11 @@ for eval_sets in range(10):
             if env.time > 1e6:
                 break
             counter += 1
-        writer.add_scalar('reward', reward, episode)
-        writer.add_scalar('num_np', env.num_np, episode)
-        writer.add_scalar('time', env.time, episode)
-        writer.add_scalar('action', action, episode)
-        writer.add_scalar('loss', loss, episode)
+        writer.add_scalar("reward", reward, episode)
+        writer.add_scalar("num_np", env.num_np, episode)
+        writer.add_scalar("time", env.time, episode)
+        writer.add_scalar("action", action, episode)
+        writer.add_scalar("loss", loss, episode)
     # validation step
     state = env.reset()
     done = False
@@ -91,10 +88,10 @@ for eval_sets in range(10):
         if env.num_np > max_np:
             dist = torch.sum(next_state)
             eval_loss = torch.nn.functional.mse_loss(dist, target)
-            writer.add_scalar('eval_loss', eval_loss, eval_sets)
+            writer.add_scalar("eval_loss", eval_loss, eval_sets)
             done = True
         if env.time > 1e6:
             dist = torch.sum(next_state)
             eval_loss = torch.nn.functional.mse_loss(dist, target)
-            writer.add_scalar('eval_loss', eval_loss, eval_sets)
+            writer.add_scalar("eval_loss", eval_loss, eval_sets)
             break
