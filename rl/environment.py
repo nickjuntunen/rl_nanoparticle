@@ -104,18 +104,9 @@ class KMCEnv(Env):
     def _get_reward(self, state):
         ''' Return the reward
         '''
-        # epsilon = 1e-8
-        # state_smoothed = state + epsilon
-        # target_smoothed = self.target_dist + epsilon
-        # state_norm = state_smoothed / (torch.sum(state_smoothed) + epsilon)
-        # target_norm = target_smoothed / (torch.sum(target_smoothed) + epsilon)
-        # dist_penalty = -torch.sum(torch.abs(state_norm - target_norm)) * 10
-        # growth_term = torch.tensor(self.sim.num_np / self.area)
-        # time_term = -self.time * 0.0001
-        # reward = growth_term # dist_penalty # + growth_term #+ time_term
         reward = torch.abs(torch.sum(state) - self.target) / self.target
         if self.time > 1e6:
-            reward -= 10.
+            reward -= 1.
         reward = torch.clamp(reward, -1.0, 1.0)
         return reward
 
