@@ -58,13 +58,16 @@ class KMCEnv(Env):
         self.time = self.sim.time
         self.update_type = args.update_type
         self.epsilon = args.epsilon
-        self.target_dist = args.target_dist
+        self.target = args.target
         self.area = args.n_side ** 2
         self.num_np = 0
+        self.ens = self.sim.ens_grid
         self.kl = torch.nn.KLDivLoss(reduction='sum')
 
     def reset(self):
         self.sim.reset()
+        self.time = self.sim.time
+        self.num_np = self.sim.num_np
         return self._get_state()[1]
 
     def _take_action(self, action):
@@ -75,11 +78,12 @@ class KMCEnv(Env):
         elif self.update_type == 'local_ens':
             self.sim.take_action(action)
 
-    def step(self, n_steps, act_idx, actions):
-        self._take_action(actions[act_idx])
+    def step(self, n_steps, action):
+        self._take_action(action)
         self.sim.step(n_steps)
         self.time = self.sim.time
         self.num_np = self.sim.num_np
+        self.ens = self.sim.ens_grid
         box, state = self._get_state()
         reward = self._get_reward(state)
         return state, reward
@@ -100,16 +104,25 @@ class KMCEnv(Env):
     def _get_reward(self, state):
         ''' Return the reward
         '''
-        kl_term = -self.kl(torch.log(state), torch.log(self.target_dist))
-        growth_term = self.sim.num_np / self.area
-        time_term = -self.time * 0.0001
-        return kl_term + growth_term + time_term
+        # epsilon = 1e-8
+        # state_smoothed = state + epsilon
+        # target_smoothed = self.target_dist + epsilon
+        # state_norm = state_smoothed / (torch.sum(state_smoothed) + epsilon)
+        # target_norm = target_smoothed / (torch.sum(target_smoothed) + epsilon)
+        # dist_penalty = -torch.sum(torch.abs(state_norm - target_norm)) * 10
+        # growth_term = torch.tensor(self.sim.num_np / self.area)
+        # time_term = -self.time * 0.0001
+        # reward = growth_term # dist_penalty # + growth_term #+ time_term
+        reward = torch.abs(torch.sum(state) - self.target) / self.target
+        if self.time > 1e6:
+            reward -= 10.
+        reward = torch.clamp(reward, -1.0, 1.0)
+        return reward
 
     def get_state_reward(self):
         state = self._get_state()[1]
         reward = self._get_reward(state)
         return state, reward
-
 
     def print_state(self):
         self.sim.print_state()

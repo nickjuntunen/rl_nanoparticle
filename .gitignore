@@ -8,14 +8,16 @@ wheels/
 
 # Virtual environments
 .venv
-.so
-.o
-.png
-.pdf
-.jpg
-.jpeg
-.gif
-.csv
-.xyz
-run
 
+# Created files
+*.so
+*.o
+*.png
+*.pdf
+*.jpg
+*.jpeg
+*.gif
+*.csv
+*.xyz
+run
+**/runs

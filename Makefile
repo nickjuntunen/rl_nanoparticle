@@ -3,17 +3,18 @@ CXXFLAGS = -O3 -Wall -std=c++17 -fPIC
 INCLUDES = $(shell python3-config --includes) $(shell python3 -m pybind11 --includes)
 
 # Common source files
-COMMON_SRCS = lattice.cpp variable_field.cpp rate_calculator.cpp monte_carlo.cpp utilities.cpp site_info.cpp simulation.cpp
+COMMON_SRC_FILES = lattice.cpp rate_calculator.cpp variable_field.cpp monte_carlo.cpp utilities.cpp site_info.cpp simulation.cpp
+COMMON_SRCS = $(addprefix ./kmc_simulation/, $(COMMON_SRC_FILES)) ./kmc_simulation/run.cpp
 
 # Python module targets
-MODULE_SRCS = $(COMMON_SRCS) bindings.cpp
+MODULE_SRCS = $(COMMON_SRCS) ./kmc_simulation/bindings.cpp
 MODULE_OBJS = $(MODULE_SRCS:.cpp=.o)
-EXTENSION_NAME = kmc_lattice_gas
+EXTENSION_NAME = ./rl/kmc_lattice_gas
 
 # Executable targets
-EXE_SRCS = $(COMMON_SRCS) run.cpp
+EXE_SRCS = $(COMMON_SRCS)
 EXE_OBJS = $(EXE_SRCS:.cpp=.o)
-EXE_NAME = run
+EXE_NAME = ./kmc_simulation/run
 
 # Default target builds both
 all: module executable
@@ -35,6 +36,7 @@ $(EXE_NAME): $(EXE_OBJS)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 clean:
-	rm -f *.o
-	rm -f $(EXTENSION_NAME)$(shell python3-config --extension-suffix)
-	rm -f $(EXE_NAME)
+	rm -f ./kmc_simulation/*.o
+	rm -f ./rl/$(EXTENSION_NAME)$(shell python3-config --extension-suffix)
+	rm -f ./kmc_simulation$(EXE_NAME)
+	rm -f ./kmc_simulation/run

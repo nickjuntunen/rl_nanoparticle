@@ -75,12 +75,12 @@ void Simulation::step(int num_steps) {
 
     lat.update_lattice_with_move(move);
 
-    if (save_lattice_traj) {
-      utils.save_lattice_traj_xyz(lat, "lattice_traj.xyz", n_side, height);
-    }
-    if (steps % 1000 == 0) {
+    if (steps % 10000 == 0) {
       fprintf(stdout, "Step: %d; Time: %f; Number of nanoparticles: %d\n",
           steps, mc.time, lat.num_np);
+      if (save_lattice_traj) {
+        utils.save_lattice_traj_xyz(lat, "lattice_traj.xyz", n_side, height);
+      }
     }
     time = mc.time;
     steps++;
@@ -100,7 +100,7 @@ void Simulation::take_action(const double& update_value, bool update_temp) {
     temperature += update_value;
   } else {
     for (int i = 0; i < ens_grid.size(); i++) {
-      ens_grid[i] += update_value;
+      ens_grid[i] = update_value;
     }
   }
 }
