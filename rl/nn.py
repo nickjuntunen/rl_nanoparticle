@@ -46,7 +46,7 @@ class DQN:
         self.epsilon = epsilon
         self.gamma = gamma
         self.num_explore_episodes = 5
-        self.update_frequency = 1000
+        self.update_frequency = 50000
 
     def _update_target(self):
         """Update target Q network with the current Q network"""
@@ -96,6 +96,7 @@ class DQN:
 
         # calculate loss
         q_values = self.q(state)
+        self.writer.add_scalar("max q-value", torch.max(q_values).item(), counter)
         q_values = q_values.gather(1, action.unsqueeze(1).long())
         loss = F.mse_loss(q_values, target.unsqueeze(1))
         self.opt.zero_grad()

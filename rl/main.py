@@ -48,7 +48,7 @@ model = nn.DQN(
 
 
 # train
-n_episodes = 500
+n_episodes = 100
 batch_size = 32
 max_np = 1000
 steps_per_move = 5
@@ -62,7 +62,7 @@ for eval_sets in range(10):
         while not done:
             act_idx = model.get_action_idx(state, episode)
             action = actions[act_idx]
-            next_state, reward = env.step(5, action)
+            next_state, reward = env.step(steps_per_move, action)
             rb.store(state, act_idx, reward, next_state)
             state = next_state
             if env.num_np > max_np:
@@ -81,9 +81,9 @@ for eval_sets in range(10):
     state = env.reset()
     done = False
     while not done:
-        act_idx = model.get_action_idx(state, episode)
+        act_idx = model.validate(state)
         action = actions[act_idx]
-        next_state, reward = env.step(5, action)
+        next_state, reward = env.step(steps_per_move, action)
         state = next_state
         if env.num_np > max_np:
             dist = torch.sum(next_state)
@@ -95,3 +95,23 @@ for eval_sets in range(10):
             eval_loss = torch.nn.functional.mse_loss(dist, target)
             writer.add_scalar("eval_loss", eval_loss, eval_sets)
             break
+
+args.save_lattice_traj = True
+env = environment.KMCEnv(args)
+state = env.reset()
+done = False
+while not done:
+    act_idx = model.validate(state)
+    action = actions[act_idx]
+    next_state, reward = env.step(steps_per_move, action)
+    state = next_state
+    if env.num_np > max_np:
+        dist = torch.sum(next_state)
+        eval_loss = torch.nn.functional.mse_loss(dist, target)
+        writer.add_scalar("eval_loss", eval_loss, eval_sets)
+        done = True
+    if env.time > 1e6:
+        dist = torch.sum(next_state)
+        eval_loss = torch.nn.functional.mse_loss(dist, target)
+        writer.add_scalar("eval_loss", eval_loss, eval_sets)
+        break
