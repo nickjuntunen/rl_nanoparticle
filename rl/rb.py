@@ -9,7 +9,7 @@ class ReplayBuffer:
         self.buffer = []
         self.idx = 0
         self.transition = namedtuple(
-            "Transition", ["state", "action", "reward", "next_state"]
+            "Transition", ["state", "action", "reward", "next_state", "done"]
         )
 
     def store(
@@ -18,11 +18,12 @@ class ReplayBuffer:
         action: torch.Tensor,
         reward: torch.Tensor,
         next_state: torch.Tensor,
+        done: torch.Tensor,
     ) -> None:
         """Store a transition in the replay buffer"""
         if len(self.buffer) < self.capacity:
             self.buffer.append(None)
-        self.buffer[self.idx] = self.transition(state, action, reward, next_state)
+        self.buffer[self.idx] = self.transition(state, action, reward, next_state, done)
         self.idx = (self.idx + 1) % self.capacity
 
     def sample(self, batch_size: int) -> namedtuple:

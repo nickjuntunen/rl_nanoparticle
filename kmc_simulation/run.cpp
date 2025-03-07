@@ -53,7 +53,7 @@ int main(int argc, char **argv) {
   int area = n_side * n_side;
   int step = 0;
   int site_idx;
-  bool time_dependent = true; // time-dependent or -independent rates
+  bool time_dependent = false; // time-dependent or -independent rates
   std::string filename = "delay" + std::to_string(delay) + ".xyz";
 
   // carry out simulation

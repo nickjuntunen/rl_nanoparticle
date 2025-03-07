@@ -104,7 +104,7 @@ PYBIND11_MODULE(kmc_lattice_gas, m) {
     .def("final_print", &Utilities::final_print);
 
   py::class_<Simulation>(m, "Simulation")
-    .def(py::init<int, double, double, double, double, bool, bool, double, double, double, double, double, double, double, double, double, double, int, int, double, double>(),
+    .def(py::init<int, double, double, double, double, double, double, double, double, double, double, double, double, int, int>(),
     R"doc(Run kinetic Monte Carlo simulation of nanoparticle lattice gas. 
     
     Parameters
@@ -115,14 +115,6 @@ PYBIND11_MODULE(kmc_lattice_gas, m) {
         Nanoparticle-nanoparticle interaction energy
     ens : float, default=1.0
         Nanoparticle-substrate interaction energy
-    lower : float, default=0.0
-        Lower bound for variable field
-    delay : float, default=0.0
-        Time delay in field oscillation
-    time_dependent_rates : bool, default=True
-        Whether to use time-dependent rates
-    save_lattice_traj : bool, default=True
-        Whether to save trajectory to XYZ file
     enf : float, default=1.0
         Nanoparticle-fluid interaction energy
     esf : float, default=1.0
@@ -147,10 +139,6 @@ PYBIND11_MODULE(kmc_lattice_gas, m) {
         Height of simulation box in lattice units
     n_side : int, default=50
         Length of simulation box side in lattice units
-    amplitude : float, default=0.5
-        Amplitude of field oscillation
-    frequency : float, default=0.5
-        Frequency of field oscillation
 
     Returns
     -------
@@ -173,10 +161,6 @@ PYBIND11_MODULE(kmc_lattice_gas, m) {
     py::arg("seed"),
     py::arg("enn"), 
     py::arg("ens"),
-    py::arg("lower"),
-    py::arg("delay"),
-    py::arg("time_dependent_rates")=true,
-    py::arg("save_lattice_traj")=true,
     py::arg("enf")=1.0,
     py::arg("esf")=1.0,
     py::arg("eff")=1.0,
@@ -188,9 +172,7 @@ PYBIND11_MODULE(kmc_lattice_gas, m) {
     py::arg("fluctuation_prefactor")=1.0,
     py::arg("rotational_prefactor")=10.0,
     py::arg("height")=10,
-    py::arg("n_side")=50,
-    py::arg("amplitude")=0.5,
-    py::arg("frequency")=0.5
+    py::arg("n_side")=50
   )
   .def("step", &Simulation::step,
     R"doc(Perform a single Monte Carlo step in the simulation.
@@ -247,6 +229,21 @@ PYBIND11_MODULE(kmc_lattice_gas, m) {
   )doc",
     py::arg("update_value"),
     py::arg("update_temp")
+  )
+  .def("save_traj", &Simulation::save_traj,
+    R"doc(Save the trajectory to an XYZ file.
+
+    Parameters
+    ----------
+    filename : str
+        Name of the file to save the trajectory to.
+
+    Returns
+    -------
+    None
+        Results are saved to trajectory file if save_lattice_traj=True
+  )doc",
+    py::arg("filename")
   )
   .def("get_state", [](Simulation& sim) {
     std::vector<int> cpp_state = sim.get_state();

@@ -3,13 +3,13 @@ enn: 7.0
 ens: 7.0
 lower: 0.5
 delay: 50.0
-time_dependent_rates: False
-save_lattice_traj: False
+# time_dependent_rates: False
+# save_lattice_traj: False
 enf: 1.0
 esf: 1.0
 eff: 1.0
 muf: 1.0
-mun: 5.0
+mun: 6.3
 fug: 0.0
 temperature: 0.1
 diffusion_prefactor: 1.0

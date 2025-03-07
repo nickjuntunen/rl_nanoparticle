@@ -14,13 +14,11 @@ class Simulation {
     Lattice lat;
     RateCalculator rc;
     MC mc;
-    VariableField vf;
+    // VariableField vf;
     Utilities utils;
     int area;
     int steps;
     int site_idx;
-    bool time_dependent_rates;
-    bool save_lattice_traj;
     int n_side;
     int height;
   public:
@@ -31,10 +29,6 @@ class Simulation {
       double,
       double,
       double,
-      bool,
-      bool,
-      double,
-      double,
       double,
       double,
       double,
@@ -44,9 +38,7 @@ class Simulation {
       double,
       double,
       const int,
-      const int,
-      double,
-      double
+      const int
     );
     void step(
       int
@@ -61,6 +53,9 @@ class Simulation {
     void take_action(
       const double&,
       bool
+    );
+    void save_traj(
+      std::string
     );
     double time;
     int seed_value;

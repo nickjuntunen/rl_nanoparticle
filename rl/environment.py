@@ -10,8 +10,8 @@ class EnvArgs:
         self.ens = 7.0
         # self.lower=0.5
         # self.delay=50.0
-        self.time_dependent_rates = False
-        self.save_lattice_traj = True
+        # self.time_dependent_rates = False
+        # self.save_lattice_traj = False
         self.enf = 1.0
         self.esf = 1.0
         self.eff = 1.0
@@ -35,10 +35,10 @@ class EnvArgs:
             self.seed,
             self.enn,
             self.ens,
-            self.lower,
-            self.delay,
-            self.time_dependent_rates,
-            self.save_lattice_traj,
+            # self.lower,
+            # self.delay,
+            # self.time_dependent_rates,
+            # self.save_lattice_traj = False,
             self.enf,
             self.esf,
             self.eff,
@@ -51,8 +51,8 @@ class EnvArgs:
             self.rotational_prefactor,
             self.height,
             self.n_side,
-            self.amplitude,
-            self.frequency,
+            # self.amplitude,
+            # self.frequency,
         ]
 
 
@@ -74,14 +74,13 @@ class KMCEnv(Env):
     def __init__(self, args: EnvArgs):
         super(KMCEnv, self).__init__()
         args_list = args.get_list()
-        init_args = args_list[:-4]
-        self.sim = kmc.Simulation(*init_args)
+        self.sim = kmc.Simulation(*args_list)
         self.args = args
-        self.state = self._get_state()[1]
+        self.sim_box, self.state = self._get_state()
         self.time = self.sim.time
         self.update_type = args.update_type
         self.epsilon = args.epsilon
-        self.target = args.target
+        self.target = args.target_dist
         self.area = args.n_side**2
         self.num_np = 0
         self.ens = self.sim.ens_grid
@@ -101,14 +100,18 @@ class KMCEnv(Env):
         elif self.update_type == "local_ens":
             self.sim.take_action(action)
 
-    def step(self, n_steps, action):
+    def step(self, n_steps, action, max_num_np, ep):
         self._take_action(action)
         self.sim.step(n_steps)
         self.time = self.sim.time
         self.num_np = self.sim.num_np
         self.ens = self.sim.ens_grid
         box, state = self._get_state()
-        reward = self._get_reward(state)
+        if self.update_type == "local_ens":
+            box = box[:, :, 1]
+            reward = self._get_reward(box)
+            return box, reward
+        reward = self._get_reward(state, max_num_np, ep)
         return state, reward
 
     def _get_state(self):
@@ -125,13 +128,26 @@ class KMCEnv(Env):
         # idx: cluster size, value at idx: number of clusters of that size
         return sim_box, cluster_array
 
-    def _get_reward(self, state):
+    def _get_reward(self, state, max_num_np=None, ep=None):
         """Return the reward"""
-        reward = torch.abs(torch.sum(state) - self.target) / self.target
-        if self.time > 1e6:
-            reward -= 1.0
-        reward = torch.clamp(reward, -1.0, 1.0)
-        return reward
+        if not self.update_type == "local_ens":
+            target_diff = torch.abs(torch.sum(state) - self.target)
+            target_reward = 1 - torch.clamp(target_diff / self.target, 0, 1)
+            
+            num_np_reward = self.num_np / max_num_np if max_num_np else 0
+            
+            time_factor = min(self.time / 1e6, 1)
+            time_penalty = -time_factor
+            
+            reward = 0.6 * target_reward + 0.3 * num_np_reward + 0.1 * time_penalty
+            return torch.clamp(reward, -1.0, 1.0)
+        
+        else:
+            state = state.unsqueeze(0).unsqueeze(0) - 1 # fluid is 0, np is 1 for comparison
+            # Calculate negative MSE as reward (higher similarity = higher reward)
+            mse = torch.mean((state - self.target) ** 2)
+            reward = 1.0 - torch.clamp(mse, 0.0, 2.0)  # Reward in [-1.0, 1.0]
+            return reward * 10
 
     def get_state_reward(self):
         state = self._get_state()[1]

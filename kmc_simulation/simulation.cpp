@@ -5,10 +5,6 @@ Simulation::Simulation(
   const int seed,
   double enn,
   double ens,
-  double lower,
-  double delay,
-  bool time_dependent_rates,
-  bool save_lattice_traj,
   double enf,
   double esf,
   double eff,
@@ -20,16 +16,14 @@ Simulation::Simulation(
   double prefactor_fluc,
   double prefactor_rot,
   const int height,
-  const int n_side,
-  double amplitude,
-  double frequency
+  const int n_side
 ) : 
   seed_value(seed),
   rng(seed),
   lat(height, n_side, 4),
   rc(lat, temp_set, prefactor_diff, prefactor_fluc, prefactor_rot, 
               enn, enf, esf, eff, muf, mun, fug),
-  vf(rc, lat, ens, amplitude, frequency, lower, delay),
+  // vf(rc, lat, ens, amplitude, frequency, lower, delay),
   mc(),
   utils(),
   area(n_side * n_side),
@@ -37,13 +31,14 @@ Simulation::Simulation(
   site_idx(0),
   n_side(n_side),
   height(height),
-  time_dependent_rates(time_dependent_rates),
-  save_lattice_traj(save_lattice_traj),
+  // time_dependent_rates(time_dependent_rates),
   ens_grid(rc.ens),
   num_np(lat.num_np),
   temperature(rc.temperature)
 {
   // Move the initialization code here
+  take_action(ens, false);
+  rc.total_energy = rc.calculate_total_lattice_energy(lat);
   fprintf(stdout, "Total energy (intial): %f\n", rc.total_energy);
   fprintf(stdout, "System initialized\n");
 }
@@ -61,11 +56,11 @@ void Simulation::step(int num_steps) {
     if (area > site_idx || site_idx > lat.volume) continue;
     
     mc.get_possible_moves(lat, rc, site_idx);
-    if (time_dependent_rates) {
-      move = mc.sample_move(lat, rc, vf, site_idx);
-    } else {
-      move = mc.sample_move(lat, rc, site_idx);
-    }
+    // if (time_dependent_rates) {
+    //   move = mc.sample_move(lat, rc, vf, site_idx);
+    // } else {
+    move = mc.sample_move(lat, rc, site_idx);
+    // }
 
     if (move.first == -1 && move.second == 0) goto beginning;
     if (move.first == -1 && move.second == -1) {
@@ -78,9 +73,6 @@ void Simulation::step(int num_steps) {
     if (steps % 10000 == 0) {
       fprintf(stdout, "Step: %d; Time: %f; Number of nanoparticles: %d\n",
           steps, mc.time, lat.num_np);
-      if (save_lattice_traj) {
-        utils.save_lattice_traj_xyz(lat, "lattice_traj.xyz", n_side, height);
-      }
     }
     time = mc.time;
     steps++;
@@ -90,14 +82,14 @@ void Simulation::step(int num_steps) {
 
 void Simulation::take_action(const std::vector<double>& ens_update) {
   for (int i = 0; i < ens_update.size(); i++) {
-    ens_grid[i] += ens_update[i];
+    ens_grid[i] = ens_update[i];
   }
 }
 
 
 void Simulation::take_action(const double& update_value, bool update_temp) {
   if (update_temp) {
-    temperature += update_value;
+    temperature = update_value;
   } else {
     for (int i = 0; i < ens_grid.size(); i++) {
       ens_grid[i] = update_value;
@@ -145,4 +137,9 @@ void Simulation::print_state() {
   fprintf(stdout, "Total number of nanoparticles: %d\n", lat.num_np);
   fprintf(stdout, "Total energy: %f\n", rc.total_energy);
   fprintf(stdout, "Total time: %f\n", mc.time);
+}
+
+
+void Simulation::save_traj(std::string filename) {
+  utils.save_lattice_traj_xyz(lat, filename.c_str(), n_side, height);
 }
