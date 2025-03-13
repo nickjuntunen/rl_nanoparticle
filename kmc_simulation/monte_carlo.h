@@ -20,6 +20,7 @@ class MC {
     void get_possible_moves(Lattice&, RateCalculator&, const int);
     std::pair<int, int> sample_move(Lattice&, RateCalculator&, VariableField&, const int);
     std::pair<int, int> sample_move(Lattice&, RateCalculator&, const int);
+    void get_new_max_move_rate(Lattice&, RateCalculator&, const int);
     void reset();
 
     double time;

@@ -143,3 +143,14 @@ void Simulation::print_state() {
 void Simulation::save_traj(std::string filename) {
   utils.save_lattice_traj_xyz(lat, filename.c_str(), n_side, height);
 }
+
+
+double Simulation::get_surface_coverage() {
+  int surf_np = 0;
+  for (int i = 0; i < area; i++) {
+    if (lat.sim_box[i + area] == 2) {
+      surf_np++;
+    }
+  }
+  return (double)surf_np / (double)area;
+}

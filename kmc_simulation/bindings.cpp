@@ -193,6 +193,15 @@ PYBIND11_MODULE(kmc_lattice_gas, m) {
     >>> kmc_lattice_gas.step(1000)
   )doc", py::arg("num_steps")
   )
+  .def("get_surface_coverage", &Simulation::get_surface_coverage,
+    R"doc(Get the surface coverage of the simulation.
+
+    Returns
+    -------
+    float
+        Fraction of surface sites occupied by nanoparticles
+  )doc"
+  )
   .def("reset", &Simulation::reset,
   R"doc(Reset the simulation to initial conditions.
   )doc"

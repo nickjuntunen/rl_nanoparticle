@@ -57,6 +57,7 @@ class Simulation {
     void save_traj(
       std::string
     );
+    double get_surface_coverage();
     double time;
     int seed_value;
     int& num_np;

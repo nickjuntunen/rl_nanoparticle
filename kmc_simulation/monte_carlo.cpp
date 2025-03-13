@@ -116,6 +116,24 @@ void MC::get_possible_moves(Lattice& lat, RateCalculator& rc, const int idx) {
 }
 
 
+void MC::get_new_max_move_rate(Lattice& lat, RateCalculator& rc, const int idx) {
+  const int box_id = lat.sim_box[idx];
+  const std::vector<int>& nl = lat.nl[idx];
+  double max_rate = 0.0;
+  for (int i = 0; i < 5; i++) {
+    get_possible_moves(lat, rc, nl[i]);
+    for (int move : move_set) {
+      move_rates[move] = rc.get_rates(lat, nl[i], move);
+    }
+    double total_rates = 0.0;
+    for (const auto& sub : move_rates) { total_rates += std::get<double>(sub[0]); }
+    if (total_rates > max_rate) { max_rate = total_rates; }
+  }
+  if (max_rate > max_move_rate) { max_move_rate = max_rate; }
+  return;
+}
+
+
 std::pair<int, int> MC::sample_move(Lattice& lat, RateCalculator& rc, VariableField& vf, const int idx) {
   /* Sample a move given all possible transitions
     Method for time-dependent rates
@@ -202,7 +220,6 @@ std::pair<int, int> MC::sample_move(Lattice& lat, RateCalculator& rc, int idx) {
     }
   }
 
-
   // move selection
   double r1 = uni_rng(rng);
   double r2 = uni_rng(rng) * total_rates;
@@ -213,6 +230,7 @@ std::pair<int, int> MC::sample_move(Lattice& lat, RateCalculator& rc, int idx) {
       time += 1.0 / total_rates * (-log(r1));
       rc.total_energy += std::get<double>(move_rates[i][1]);
       int move = std::get<int>(move_rates[i][2]);
+      get_new_max_move_rate(lat, rc, idx);
       return {idx, move};
     }
   }
