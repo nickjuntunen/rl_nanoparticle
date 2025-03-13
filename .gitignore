@@ -19,5 +19,7 @@ wheels/
 *.gif
 *.csv
 *.xyz
-run
+*.txt
+**/run
 **/runs
+**/test.*

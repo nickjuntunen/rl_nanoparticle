@@ -78,9 +78,16 @@ class KMCEnv(Env):
         self.args = args
         self.sim_box, self.state = self._get_state()
         self.time = self.sim.time
+        self.surface_coverage = self.sim.get_surface_coverage()
         self.update_type = args.update_type
         self.epsilon = args.epsilon
-        self.target = args.target_dist
+
+        if isinstance(args.target_dist, tuple):
+            self.target_nclu = args.target_dist[0]
+            self.target_area = args.target_dist[1]
+        else:
+            self.target = args.target_dist
+        
         self.area = args.n_side**2
         self.num_np = 0
         self.ens = self.sim.ens_grid
@@ -98,20 +105,25 @@ class KMCEnv(Env):
         elif self.update_type == "global_ens":
             self.sim.take_action(action, False)
         elif self.update_type == "local_ens":
-            self.sim.take_action(action)
+            action_list = []
+            action = action.squeeze().flatten()
+            for i in range(len(action)):
+                action_list.append(action[i].item())
+            self.sim.take_action(action_list)
 
-    def step(self, n_steps, action, max_num_np, ep):
+    def step(self, n_steps, action, max_num_np):
         self._take_action(action)
         self.sim.step(n_steps)
         self.time = self.sim.time
         self.num_np = self.sim.num_np
         self.ens = self.sim.ens_grid
+        self.surface_coverage = self.sim.get_surface_coverage()
         box, state = self._get_state()
         if self.update_type == "local_ens":
             box = box[:, :, 1]
-            reward = self._get_reward(box)
+            reward = self._get_reward(box, action)
             return box, reward
-        reward = self._get_reward(state, max_num_np, ep)
+        reward = self._get_reward(state, max_num_np)
         return state, reward
 
     def _get_state(self):
@@ -128,30 +140,34 @@ class KMCEnv(Env):
         # idx: cluster size, value at idx: number of clusters of that size
         return sim_box, cluster_array
 
-    def _get_reward(self, state, max_num_np=None, ep=None):
+    def _get_reward(self, state, actions, max_num_np=None):
         """Return the reward"""
         if not self.update_type == "local_ens":
-            target_diff = torch.abs(torch.sum(state) - self.target)
-            target_reward = 1 - torch.clamp(target_diff / self.target, 0, 1)
-            
+            nclu_diff = torch.abs(torch.sum(state) - self.target_nclu)
+            nclu_reward = 1 - torch.clamp(nclu_diff / self.target_nclu, -1, 1)
+
+            area_diff = torch.abs(self.surface_coverage - self.target_area)
+            area_reward = 1 - torch.clamp(area_diff / self.target_area, -1, 1)
+
             num_np_reward = self.num_np / max_num_np if max_num_np else 0
             
-            time_factor = min(self.time / 1e6, 1)
-            time_penalty = -time_factor
+            time_penalty = -min(self.time / 1e6, 1)
             
-            reward = 0.6 * target_reward + 0.3 * num_np_reward + 0.1 * time_penalty
+            reward = 0.35 * nclu_reward + 0.35 * area_reward + 0.2 * num_np_reward + 0.1 * time_penalty
             return torch.clamp(reward, -1.0, 1.0)
         
         else:
-            state = state.unsqueeze(0).unsqueeze(0) - 1 # fluid is 0, np is 1 for comparison
-            # Calculate negative MSE as reward (higher similarity = higher reward)
-            mse = torch.mean((state - self.target) ** 2)
-            reward = 1.0 - torch.clamp(mse, 0.0, 2.0)  # Reward in [-1.0, 1.0]
-            return reward * 10
+            state = state - 1 # fluid is 0, np is 1 for comparison
 
-    def get_state_reward(self):
+            mse = torch.mean((state - self.target) ** 2)
+
+            reward = 1 - torch.clamp(mse, 0.0, 2.0)
+            # reward = torch.clamp(reward, -1, 1).cpu()  # Reward in [-1.0, 1.0]
+            return reward
+
+    def get_state_reward(self, actions=None):
         state = self._get_state()[1]
-        reward = self._get_reward(state)
+        reward = self._get_reward(state, actions)
         return state, reward
 
     def print_state(self):

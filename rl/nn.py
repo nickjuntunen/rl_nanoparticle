@@ -10,6 +10,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 torch.autograd.set_detect_anomaly(True)
 
+
 class LearningArchitecture:
     def __init__(self, state_dim: int, action_dim: int):
         self.state_dim = state_dim
@@ -31,14 +32,14 @@ class LearningArchitecture:
 class Q(nn.Module):
     def __init__(self, state_dim: int, action_dim: int):
         super(Q, self).__init__()
-        self.fc1 = nn.Linear(state_dim, 64)
-        self.fc2 = nn.Linear(64, 64)
-        self.fc3 = nn.Linear(64, action_dim)
+        self.fc1 = nn.Linear(state_dim, 256)
+        self.fc2 = nn.Linear(256, 256)
+        self.fc3 = nn.Linear(256, action_dim)
         self.activation = nn.LeakyReLU()
 
     def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
+        x = F.leaky_relu(self.fc1(x))
+        x = F.leaky_relu(self.fc2(x))
         x = self.activation(self.fc3(x))
         return x
 
@@ -96,8 +97,12 @@ class DDQN(LearningArchitecture):
     def train(self, batch: namedtuple, counter):
         """Train the Q network with a batch of transitions"""
         states = torch.stack([t.state for t in batch]).to(self.device)
-        actions = torch.tensor([t.action for t in batch], device=self.device).view(-1, 1)
-        rewards = torch.tensor([t.reward for t in batch], device=self.device).view(-1, 1)
+        actions = torch.tensor([t.action for t in batch], device=self.device).view(
+            -1, 1
+        )
+        rewards = torch.tensor([t.reward for t in batch], device=self.device).view(
+            -1, 1
+        )
         next_states = torch.stack([t.next_state for t in batch]).to(self.device)
         dones = torch.stack([t.done for t in batch]).to(self.device).view(-1, 1)
 
@@ -113,8 +118,8 @@ class DDQN(LearningArchitecture):
         with torch.no_grad():
             next_q_targets = self.q_target(next_states)
             next_q_targets = torch.gather(next_q_targets, 1, next_actions.unsqueeze(-1))
-            targets = rewards + (1-dones) * self.gamma * next_q_targets
-        
+            targets = rewards + (1 - dones) * self.gamma * next_q_targets
+
         self.q.train()
         q_values = self.q(states)
         q_values = torch.gather(q_values, 1, actions)
@@ -128,7 +133,7 @@ class DDQN(LearningArchitecture):
 
         if counter % self.update_frequency == 0:
             self._update_target()
-        
+
         self._log_metrics(q_values, rewards, counter)
 
         return loss.item()
@@ -154,65 +159,37 @@ class DDQN(LearningArchitecture):
         torch.save(self.q.state_dict(), path)
 
 
-class ActorNet(nn.Module):
+class ActorCriticNet(nn.Module):
     def __init__(self, state_dim: int, action_dim: int):
-        super(ActorNet, self).__init__()
+        super(ActorCriticNet, self).__init__()
         self.state_dim = state_dim
         self.action_dim = action_dim
         self.cnn = nn.Sequential(
-            nn.Conv2d(1, 16, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(16, 16, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(16, 1, kernel_size=3, padding=1),
-            nn.ReLU()
+            nn.Conv2d(1, 16, kernel_size=5, padding=2),
+            nn.Tanh(),
+            nn.Conv2d(16, 16, kernel_size=5, padding=2),
+            nn.Tanh(),
+            nn.Conv2d(16, 1, kernel_size=5, padding=2),
+            nn.Tanh(),
         )
-        self.fc1 = nn.Linear(state_dim**2, 256)
-        self.fc2 = nn.Linear(256, 128)
 
-        self.actor_mean = nn.Linear(128, state_dim**2)
-        self.actor_log_std = nn.Parameter(torch.zeros(1, state_dim**2))
-
+        self.actor_head = nn.Linear(self.action_dim**2, self.action_dim**2)
+        self.actor_log_std = nn.Parameter(torch.zeros(1, self.action_dim**2))
+        nn.init.uniform_(self.actor_head.weight, 3.0, 5.0)
+        nn.init.uniform_(self.actor_head.bias, 3.0, 5.0)
+        self.critic_head = nn.Linear(self.action_dim**2, 1)
 
     def forward(self, x):
-        if len(x.shape) == 3:
-            x = x.unsqueeze(0)
+        x = x.unsqueeze(1)
         x = self.cnn(x)
-        x = x.view(x.size(0), -1)  # Flatten the CNN output
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-
-        action_mean = self.actor_mean(x)
-        action_log_std = self.actor_log_std.expand_as(action_mean)
-        action_std = torch.exp(action_log_std)
-        action_std = action_std.view(-1, 1, self.state_dim, self.action_dim)
-        action_mean = action_mean.view(-1, 1, self.state_dim, self.action_dim)
-        return action_mean, action_std
-    
-
-class CriticNet(nn.Module):
-    def __init__(self, state_dim: int):
-        super(CriticNet, self).__init__()
-        self.input_dim = state_dim
-        self.cnn = nn.Sequential(
-            nn.Conv2d(1, 16, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(16, 16, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(16, 1, kernel_size=3, padding=1),
-            nn.ReLU()
-        )
-        self.fc1 = nn.Linear(state_dim**2, 256)
-        self.fc2 = nn.Linear(256, 128)
-        self.fc3 = nn.Linear(128, 1)
-
-    def forward(self, x):
         x = x.view(x.size(0), -1)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        value = self.fc3(x)
-        return value
-
+        action_mean = self.actor_head(x)
+        action_mean = action_mean.view(-1, self.action_dim, self.action_dim)
+        action_log_std = self.actor_log_std.view(-1, self.action_dim, self.action_dim)
+        action_std = torch.exp(action_log_std)
+        value = self.critic_head(x)
+        return action_mean, action_std, value
+        
 
 class A2C(LearningArchitecture):
     def __init__(
@@ -222,15 +199,20 @@ class A2C(LearningArchitecture):
         writer: SummaryWriter,
         lr: float,
         gamma: float,
-        lamb: float
+        lamb: float,
     ):
         super(A2C, self).__init__(state_dim, action_dim)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.actor = ActorNet(state_dim, action_dim).to(self.device)
-        self.critic = CriticNet(state_dim).to(self.device)
-        self.opt_a = Adam(self.actor.parameters(), lr=lr)
-        self.opt_c = Adam(self.critic.parameters(), lr=lr)
-        self.policy = ActorCriticPolicy(self.actor, self.critic)
+        self.ac = ActorCriticNet(state_dim, action_dim).to(self.device)
+        self.opt_a = Adam(self.ac.parameters(), lr=lr)
+        self.scheduler_a = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.opt_a, mode="min", factor=0.5, patience=10, verbose=True
+        )
+        self.opt_c = Adam(self.ac.parameters(), lr=lr)
+        self.scheduler_c = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.opt_c, mode="min", factor=0.5, patience=10, verbose=True
+        )
+        self.policy = ActorCriticPolicy(self.ac)
         self.writer = writer
         self.gamma = gamma
         self.lamb = lamb
@@ -238,62 +220,60 @@ class A2C(LearningArchitecture):
     def choose_action(self, state):
         state = state.unsqueeze(0).to(self.device).float()
         action = self.policy.act(state)
-        action = action.clamp(-10, 10)
+        action = torch.clamp(action, 1, 10)
         return action
-    
+
     def _calculate_advantage(self, rewards, values, next_values, dones):
+        advantages = []
         returns = []
         gae = 0
         for i in reversed(range(len(rewards))):
-            delta = rewards[i] + self.gamma * next_values[i] * (1 - dones[i]) - values[i]
-            gae = delta + self.gamma * self.lamb * (1 - dones[i]) * gae
-            returns.insert(0, gae + values[i])
-        return returns
-    
+            returns.insert(0, rewards[i] + self.gamma * next_values[i] * (1 - dones[i]))
+            delta = (returns[0] - values[i])
+            gae = delta + self.gamma * self.lamb * gae
+            advantages.insert(0, gae)
+        return advantages, returns
+
     def train(self, state, actions, rewards, next_state, dones, counter):
-        state = torch.tensor(np.array(state), device=self.device).float()
+        state = torch.stack(state).to(self.device).float()
         actions = torch.tensor(np.array(actions), device=self.device).float()
         rewards = torch.tensor(np.array(rewards), device=self.device).float()
         next_state = torch.tensor(np.array(next_state), device=self.device).float()
         dones = torch.tensor(np.array(dones), device=self.device).float()
 
-        values = self.critic(state)
-        next_values = self.critic(next_state)
-        advantage_c = self._calculate_advantage(rewards, values, next_values, dones)
-        advantage_c = torch.stack([a.clone() for a in advantage_c]).to(self.device)
-        advantage_a = torch.clone(advantage_c).detach()
-        
-        self._update_critic(state, advantage_c, counter)
-        self._update_actor(state, actions, advantage_a, counter)
+        _, _, values = self.ac(state)
+        _, _, next_values = self.ac(next_state)
+
+        advantage, returns = self._calculate_advantage(rewards, values, next_values, dones)
+        advantage = torch.stack([a.clone() for a in advantage]).to(self.device)
+        returns = torch.stack([r.clone() for r in returns]).to(self.device)
+
+        self._update_actor_critic(state, actions, values, returns, advantage, counter)
         return
 
-    def _update_critic(self, state, advantage, counter):
-        values = self.critic(state)
-        loss = F.mse_loss(values, advantage)
-        self.opt_c.zero_grad()
-        loss.backward(retain_graph=True)
-        self.opt_c.step()
-        self.writer.add_scalar("critic loss", loss.item(), counter)
-        return
-    
-    def _update_actor(self, state, actions, advantage, counter):
-        state = state.unsqueeze(1)
+    def _update_actor_critic(self, state, actions, values, returns, advantage, counter):
+        critic_loss = F.mse_loss(values, returns.detach())
         distribution = self.policy.action_distribution(state)
-        actions = actions.view(-1, self.state_dim, self.action_dim)
         log_probs = distribution.log_prob(actions)
-        loss = -(log_probs * advantage).mean()
+        # entropy = distribution.entropy().mean()
+        # norm_advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)
+        actor_loss = -torch.min((log_probs * advantage).mean(), torch.clamp((log_probs*advantage).mean(), -0.2, 0.2))# - 0.1 * entropy
+        loss = actor_loss + critic_loss
+
         self.opt_a.zero_grad()
+        self.opt_c.zero_grad()
         loss.backward()
+        nn.utils.clip_grad_norm_(self.ac.parameters(), max_norm=1.0)
         self.opt_a.step()
-        self.writer.add_scalar("actor loss", loss.item(), counter)
+        self.opt_c.step()
+
+        self.writer.add_scalar("actor loss", actor_loss.item(), counter)
+        self.writer.add_scalar("critic loss", critic_loss.item(), counter)
         return
 
     def validate(self, state):
         raise NotImplementedError
 
     def save(self, path):
-        torch.save({
-            'actor': self.actor.state_dict(),
-            'critic': self.critic.state_dict()
-        }, path)
+        torch.save(self.ac.state_dict(), path)
         return

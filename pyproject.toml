@@ -13,4 +13,5 @@ dependencies = [
     "pybind11>=2.13.6",
     "lightning>=2.5.0.post0",
     "black>=25.1.0",
+    "matplotlib>=3.10.1",
 ]

@@ -1,6 +1,6 @@
 seed: 10
 enn: 7.0
-ens: 7.0
+ens: 3.0
 lower: 0.5
 delay: 50.0
 # time_dependent_rates: False
