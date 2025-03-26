@@ -4,7 +4,7 @@ import torch
 from torch.optim import Adam
 import numpy as np
 import rb as replay_buffer
-from policy import ActorCriticPolicy
+from policy import GaussianActorCriticPolicy, CategoricalActorCriticPolicy
 from collections import namedtuple
 from torch.utils.tensorboard import SummaryWriter
 
@@ -22,7 +22,7 @@ class LearningArchitecture:
     def validate(self, x):
         raise NotImplementedError
 
-    def choose_action(self, state, ep):
+    def choose_action(self, state, ep=None):
         raise NotImplementedError
 
     def save(self, path):
@@ -160,7 +160,13 @@ class DDQN(LearningArchitecture):
 
 
 class ActorCriticNet(nn.Module):
-    def __init__(self, state_dim: int, action_dim: int):
+    def __init__(
+        self,
+        state_dim: int,
+        action_dim: int,
+        policy_type: str = "gaussian",
+        action_space_len: int = 1,
+    ):
         super(ActorCriticNet, self).__init__()
         self.state_dim = state_dim
         self.action_dim = action_dim
@@ -173,8 +179,17 @@ class ActorCriticNet(nn.Module):
             nn.Tanh(),
         )
 
-        self.actor_head = nn.Linear(self.action_dim**2, self.action_dim**2)
-        self.actor_log_std = nn.Parameter(torch.zeros(1, self.action_dim**2))
+        if policy_type == "categorical":
+            self.actor_head = nn.Linear(
+                self.action_dim**2, self.action_dim**2 * action_space_len
+            )
+            self.actor_log_std = nn.Parameter(
+                torch.zeros(1, self.action_dim**2 * action_space_len)
+            )
+        else:
+            self.actor_head = nn.Linear(self.action_dim**2, self.action_dim**2)
+            self.actor_log_std = nn.Parameter(torch.zeros(1, self.action_dim**2))
+
         nn.init.uniform_(self.actor_head.weight, 3.0, 5.0)
         nn.init.uniform_(self.actor_head.bias, 3.0, 5.0)
         self.critic_head = nn.Linear(self.action_dim**2, 1)
@@ -189,39 +204,25 @@ class ActorCriticNet(nn.Module):
         action_std = torch.exp(action_log_std)
         value = self.critic_head(x)
         return action_mean, action_std, value
-        
+
 
 class A2C(LearningArchitecture):
     def __init__(
         self,
         state_dim: int,
         action_dim: int,
-        writer: SummaryWriter,
-        lr: float,
-        gamma: float,
-        lamb: float,
     ):
         super(A2C, self).__init__(state_dim, action_dim)
+        self.state_dim = state_dim
+        self.action_dim = action_dim
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.ac = ActorCriticNet(state_dim, action_dim).to(self.device)
-        self.opt_a = Adam(self.ac.parameters(), lr=lr)
-        self.scheduler_a = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            self.opt_a, mode="min", factor=0.5, patience=10, verbose=True
-        )
-        self.opt_c = Adam(self.ac.parameters(), lr=lr)
-        self.scheduler_c = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            self.opt_c, mode="min", factor=0.5, patience=10, verbose=True
-        )
-        self.policy = ActorCriticPolicy(self.ac)
-        self.writer = writer
-        self.gamma = gamma
-        self.lamb = lamb
+        self.ac = None
+        self.gamma = None
+        self.lamb = None
 
-    def choose_action(self, state):
-        state = state.unsqueeze(0).to(self.device).float()
-        action = self.policy.act(state)
-        action = torch.clamp(action, 1, 10)
-        return action
+    def save(self, path):
+        torch.save(self.ac.state_dict(), path)
+        return
 
     def _calculate_advantage(self, rewards, values, next_values, dones):
         advantages = []
@@ -229,7 +230,7 @@ class A2C(LearningArchitecture):
         gae = 0
         for i in reversed(range(len(rewards))):
             returns.insert(0, rewards[i] + self.gamma * next_values[i] * (1 - dones[i]))
-            delta = (returns[0] - values[i])
+            delta = returns[0] - values[i]
             gae = delta + self.gamma * self.lamb * gae
             advantages.insert(0, gae)
         return advantages, returns
@@ -244,12 +245,53 @@ class A2C(LearningArchitecture):
         _, _, values = self.ac(state)
         _, _, next_values = self.ac(next_state)
 
-        advantage, returns = self._calculate_advantage(rewards, values, next_values, dones)
+        advantage, returns = self._calculate_advantage(
+            rewards, values, next_values, dones
+        )
         advantage = torch.stack([a.clone() for a in advantage]).to(self.device)
         returns = torch.stack([r.clone() for r in returns]).to(self.device)
 
         self._update_actor_critic(state, actions, values, returns, advantage, counter)
         return
+
+    def choose_action(self, state, ep=None):
+        return super().choose_action(state, ep)
+
+    def _update_actor_critic(self, state, actions, values, returns, advantage, counter):
+        raise NotImplementedError
+
+
+class GaussianA2C(A2C):
+    def __init__(
+        self,
+        state_dim: int,
+        action_dim: int,
+        writer: SummaryWriter,
+        lr: float,
+        gamma: float,
+        lamb: float,
+    ):
+        super(GaussianA2C, self).__init__(state_dim, action_dim)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.ac = ActorCriticNet(state_dim, action_dim).to(self.device)
+        self.opt_a = Adam(self.ac.parameters(), lr=lr)
+        self.scheduler_a = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.opt_a, mode="min", factor=0.5, patience=10
+        )
+        self.opt_c = Adam(self.ac.parameters(), lr=lr)
+        self.scheduler_c = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.opt_c, mode="min", factor=0.5, patience=10
+        )
+        self.policy = GaussianActorCriticPolicy(self.ac)
+        self.writer = writer
+        self.gamma = gamma
+        self.lamb = lamb
+
+    def choose_action(self, state):
+        state = state.unsqueeze(0).to(self.device).float()
+        action = self.policy.act(state)
+        action = torch.clamp(action, -10, 10)
+        return action
 
     def _update_actor_critic(self, state, actions, values, returns, advantage, counter):
         critic_loss = F.mse_loss(values, returns.detach())
@@ -257,7 +299,9 @@ class A2C(LearningArchitecture):
         log_probs = distribution.log_prob(actions)
         # entropy = distribution.entropy().mean()
         # norm_advantage = (advantage - advantage.mean()) / (advantage.std() + 1e-8)
-        actor_loss = -torch.min((log_probs * advantage).mean(), torch.clamp((log_probs*advantage).mean(), -0.2, 0.2))# - 0.1 * entropy
+        actor_loss = -torch.clamp(
+            (log_probs * advantage).mean(), -0.2, 0.2
+        )  # - 0.1 * entropy
         loss = actor_loss + critic_loss
 
         self.opt_a.zero_grad()
@@ -271,9 +315,73 @@ class A2C(LearningArchitecture):
         self.writer.add_scalar("critic loss", critic_loss.item(), counter)
         return
 
-    def validate(self, state):
-        raise NotImplementedError
 
-    def save(self, path):
-        torch.save(self.ac.state_dict(), path)
+class CategoricalA2C(A2C):
+    def __init__(
+        self,
+        state_dim: int,
+        action_dim: int,
+        action_space: torch.tensor,
+        writer: SummaryWriter,
+        lr: float,
+        gamma: float,
+        lamb: float,
+    ):
+        super(CategoricalA2C, self).__init__(state_dim, action_dim)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.ac = ActorCriticNet(
+            state_dim,
+            action_dim,
+            policy_type="categorical",
+            action_space_len=len(action_space),
+        ).to(self.device)
+        self.opt_a = Adam(self.ac.parameters(), lr=lr)
+        self.scheduler_a = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.opt_a, mode="min", factor=0.5, patience=10, verbose=True
+        )
+        self.opt_c = Adam(self.ac.parameters(), lr=lr)
+        self.scheduler_c = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.opt_c, mode="min", factor=0.5, patience=10, verbose=True
+        )
+        self.action_space = action_space
+        self.policy = CategoricalActorCriticPolicy(self.ac, action_space)
+        self.writer = writer
+        self.gamma = gamma
+        self.lamb = lamb
+
+    def choose_action(self, state, ep=None):
+        state = state.unsqueeze(0).to(self.device).float()
+        action = self.policy.act(state)
+        return action
+
+    def _update_actor_critic(self, state, actions, values, returns, advantage, counter):
+        critic_loss = F.mse_loss(values, returns.detach())
+
+        distribution = self.policy.action_distribution(state)
+        action_indices = (
+            (self.policy.action_space.unsqueeze(0) - actions.unsqueeze(-1)).abs() < 1e-6
+        ).nonzero()[:, -1]
+        log_probs = distribution.log_prob(action_indices)
+
+        entropy = distribution.entropy().mean()
+
+        ratio = torch.exp(log_probs - log_probs.detach())
+        surr1 = ratio * advantage
+        surr2 = torch.clamp(ratio, 1.0 - 0.2, 1.0 + 0.2) * advantage
+        actor_loss = -torch.min(surr1, surr2).mean()
+        actor_loss -= 0.01 * entropy
+
+        loss = actor_loss + 0.5 * critic_loss
+
+        self.opt_a.zero_grad()
+        self.opt_c.zero_grad()
+        loss.backward()
+        nn.utils.clip_grad_norm_(self.ac.parameters(), max_norm=0.5)
+        self.opt_a.step()
+        self.opt_c.step()
+
+        self.writer.add_scalar("actor loss", actor_loss.item(), counter)
+        self.writer.add_scalar("critic loss", critic_loss.item(), counter)
+        self.writer.add_scalar("entropy", entropy.item(), counter)
+
         return

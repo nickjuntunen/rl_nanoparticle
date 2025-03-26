@@ -18,6 +18,8 @@ def parse_arguments():
         default="global_ens",
         choices=["temp", "global_ens"],
     )
+    parser.add_argument("--seed", "-s", type=int, default=0)
+    parser.add_argument("--target_s", "-t", type=int, default=25)
     return parser.parse_args()
 
 
@@ -26,11 +28,12 @@ def load_config(config_file):
         return yaml.safe_load(f)
 
 
-def initialize_environment(config, update_type):
+def initialize_environment(config, update_type, seed, target_s):
     args = environment.EnvArgs()
     for key, value in config.items():
         setattr(args, key, value)
     args.update_type = update_type
+    args.seed = seed
 
     if update_type == "temp":
         actions = torch.logspace(-2, 0.5, 11)[1:].view(-1, 1)
@@ -41,8 +44,8 @@ def initialize_environment(config, update_type):
         actions = torch.linspace(
             -args.enn * 1.2, args.enn * 1.2, int(4 * args.enn)
         ).view(-1, 1)
-        target_cluster = torch.tensor(25)
-        target_area = torch.tensor(0.15)
+        target_cluster = torch.tensor(target_s)
+        target_area = torch.tensor(0.004*target_s)
         target = (target_cluster, target_area)
 
     args.target_dist = target
@@ -118,12 +121,12 @@ def validate(
 def main():
     args = parse_arguments()
     config = load_config(args.config)
-    env, actions, target = initialize_environment(config, args.update_type)
+    env, actions, target = initialize_environment(config, args.update_type, args.seed, args.target_s)
     rb = replay_buffer.ReplayBuffer(100000)
     writer = SummaryWriter()
     model = initialize_model(env, actions.shape[0], actions, rb, writer)
 
-    traj_name = f"traj_{args.update_type}"
+    traj_name = f"traj_{args.update_type}_{args.seed}_{args.target_s}"
     n_episodes = 300
     n_eval_sets = 5
     batch_size = 32
