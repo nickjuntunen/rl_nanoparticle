@@ -37,14 +37,15 @@ def initialize_model(state_dim, action_dim, actions, writer):
         action_dim=action_dim,
         action_space=actions,
         writer=writer,
-        lr=0.00000001,
+        a_lr=0.00000001,
+        c_lr=0.00001,
         gamma=0.99,
         lamb=0.95,
     )
 
 
 def check_done(max_np, env, steps_per_move, c):
-    if env.num_np > max_np or env.time > 1e6 or int(c + 1) * steps_per_move > 1e5:
+    if env.num_np > max_np or int(c + 1) * steps_per_move > 1e5:# or env.time > 1e6:
         return torch.tensor(1)
     return torch.tensor(0)
 
@@ -96,13 +97,15 @@ def validate(env, model, writer, traj_name, eval_set, steps_per_move, max_np):
     state = env.reset()
     state = env.sim_box[:, :, 1]
     done = False
-    env.sim.save_traj(f"{traj_name}_ep{eval_set}.xyz")
+    save_name = f"{traj_name}_ep{eval_set}.xyz"
+    env.sim.save_traj(save_name)
     step = 0
     episode_reward = 0
 
     while not done:
         action = model.choose_action(state)
         next_state, reward = env.step(steps_per_move, action, max_np)
+        env.sim.save_traj(save_name)
         done = check_done(max_np, env, steps_per_move, step)
         state = next_state
         episode_reward += reward
@@ -125,7 +128,7 @@ def main():
     max_np = 1000
     steps_per_move = 5
     batch_size = 16
-    n_episodes = 500
+    n_episodes = 50
     n_eval_sets = 10
     counter = 0
 

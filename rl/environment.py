@@ -158,11 +158,11 @@ class KMCEnv(Env):
         
         else:
             state = state - 1 # fluid is 0, np is 1 for comparison
-
-            mse = torch.mean((state - self.target) ** 2)
-
-            reward = 1 - torch.clamp(mse, 0.0, 2.0)
-            # reward = torch.clamp(reward, -1, 1).cpu()  # Reward in [-1.0, 1.0]
+            neg_space_error = (self.target - state > 0).sum() / self.area
+            pos_space_error = (self.target - state < 0).sum() / self.area
+            error = neg_space_error + 2 * pos_space_error
+            reward = 1 - error
+            reward = torch.clamp(reward, -1.0, 1.0)
             return reward
 
     def get_state_reward(self, actions=None):

@@ -289,7 +289,7 @@ class GaussianA2C(A2C):
 
     def choose_action(self, state):
         state = state.unsqueeze(0).to(self.device).float()
-        action = self.policy.act(state)
+        action = self.policy.act(state, False)
         action = torch.clamp(action, -10, 10)
         return action
 
@@ -323,7 +323,8 @@ class CategoricalA2C(A2C):
         action_dim: int,
         action_space: torch.tensor,
         writer: SummaryWriter,
-        lr: float,
+        a_lr: float,
+        c_lr: float,
         gamma: float,
         lamb: float,
     ):
@@ -335,13 +336,13 @@ class CategoricalA2C(A2C):
             policy_type="categorical",
             action_space_len=len(action_space),
         ).to(self.device)
-        self.opt_a = Adam(self.ac.parameters(), lr=lr)
+        self.opt_a = Adam(self.ac.parameters(), lr=a_lr)
         self.scheduler_a = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            self.opt_a, mode="min", factor=0.5, patience=10, verbose=True
+            self.opt_a, mode="min", factor=0.5, patience=10
         )
-        self.opt_c = Adam(self.ac.parameters(), lr=lr)
+        self.opt_c = Adam(self.ac.parameters(), lr=c_lr)
         self.scheduler_c = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            self.opt_c, mode="min", factor=0.5, patience=10, verbose=True
+            self.opt_c, mode="min", factor=0.5, patience=10
         )
         self.action_space = action_space
         self.policy = CategoricalActorCriticPolicy(self.ac, action_space)
@@ -351,7 +352,7 @@ class CategoricalA2C(A2C):
 
     def choose_action(self, state, ep=None):
         state = state.unsqueeze(0).to(self.device).float()
-        action = self.policy.act(state)
+        action = self.policy.act(state, False)
         return action
 
     def _update_actor_critic(self, state, actions, values, returns, advantage, counter):
@@ -362,14 +363,17 @@ class CategoricalA2C(A2C):
             (self.policy.action_space.unsqueeze(0) - actions.unsqueeze(-1)).abs() < 1e-6
         ).nonzero()[:, -1]
         log_probs = distribution.log_prob(action_indices)
-
         entropy = distribution.entropy().mean()
 
-        ratio = torch.exp(log_probs - log_probs.detach())
-        surr1 = ratio * advantage
-        surr2 = torch.clamp(ratio, 1.0 - 0.2, 1.0 + 0.2) * advantage
-        actor_loss = -torch.min(surr1, surr2).mean()
-        actor_loss -= 0.01 * entropy
+        # ratio = torch.exp(current_log_probs - log_probs.flatten())
+        # surr1 = ratio * advantage
+        # surr2 = torch.clamp(ratio, 1.0 - 0.2, 1.0 + 0.2) * advantage
+        # actor_loss = -torch.min(surr1, surr2).mean()
+        # actor_loss -= 0.01 * entropy
+
+        actor_loss = -torch.clamp(
+            (log_probs * advantage).mean(), -0.2, 0.2
+        ) - 0.1 * entropy
 
         loss = actor_loss + 0.5 * critic_loss
 
