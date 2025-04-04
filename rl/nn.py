@@ -69,6 +69,7 @@ class DDQN(LearningArchitecture):
         self.gamma = gamma
         self.num_explore_episodes = 5
         self.update_frequency = 100
+        self.state_dict = self.q.state_dict
 
     def _update_target(self):
         """Update target Q network with the current Q network"""
@@ -157,6 +158,16 @@ class DDQN(LearningArchitecture):
 
     def save(self, path):
         torch.save(self.q.state_dict(), path)
+
+    def load_state_dict(self, state_dict):
+        self.q.load_state_dict(state_dict)
+        self.q_target.load_state_dict(state_dict)
+        return
+    
+    def eval(self):
+        self.q.eval()
+        self.q_target.eval()
+        return
 
 
 class ActorCriticNet(nn.Module):
@@ -377,12 +388,22 @@ class CategoricalA2C(A2C):
 
         loss = actor_loss + 0.5 * critic_loss
 
-        self.opt_a.zero_grad()
         self.opt_c.zero_grad()
-        loss.backward()
-        nn.utils.clip_grad_norm_(self.ac.parameters(), max_norm=0.5)
-        self.opt_a.step()
+        critic_loss.backward(retain_graph=True)
+
+        self.opt_a.zero_grad()
+        actor_loss.backward()
+
+        nn.utils.clip_grad_norm_(self.ac.parameters(), max_norm=1.0)
         self.opt_c.step()
+        self.opt_a.step()
+
+        # self.opt_a.zero_grad()
+        # self.opt_c.zero_grad()
+        # loss.backward()
+        # nn.utils.clip_grad_norm_(self.ac.parameters(), max_norm=0.5)
+        # self.opt_a.step()
+        # self.opt_c.step()
 
         self.writer.add_scalar("actor loss", actor_loss.item(), counter)
         self.writer.add_scalar("critic loss", critic_loss.item(), counter)

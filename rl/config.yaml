@@ -1,8 +1,8 @@
 seed: 10
 enn: 7.0
 ens: 3.0
-lower: 0.5
-delay: 50.0
+# lower: 0.5
+# delay: 50.0
 # time_dependent_rates: False
 # save_lattice_traj: False
 enf: 1.0
@@ -21,3 +21,14 @@ amplitude: 0.5
 frequency: 5
 update_type: global_ens
 epsilon: 0.1
+target_s: 25
+max_moves: 100000
+max_time: 1000000
+steps_per_move: 3
+max_np: 1000
+n_episodes: 100
+save_interval: 10
+n_training_sets: 10
+batch_size: 32
+num_workers: 4
+train_loops_per_episode: 10

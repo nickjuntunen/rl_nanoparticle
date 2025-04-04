@@ -3,6 +3,42 @@ import numpy as np
 import kmc_lattice_gas as kmc
 
 
+def initialize_environment(config, seed):
+    if config:
+        args = EnvArgs.from_config(config)
+    else:
+        args = EnvArgs()
+    for key, value in config.items():
+        setattr(args, key, value)
+
+    target_s = config["target_s"]
+    update_type = config["update_type"]
+    if update_type not in ["temp", "global_ens"]:
+        raise ValueError(
+            f"Invalid update_type: {update_type}. Must be one of ['temp', 'global_ens']"
+        )
+    
+    args.update_type = update_type
+    args.seed = seed
+
+    if update_type == "temp":
+        actions = torch.logspace(-2, 0.5, 11)[1:].view(-1, 1)
+        target_cluster = torch.tensor(1)
+        target_area = torch.tensor(1.0)
+        target = (target_cluster, target_area)
+    else:
+        actions = torch.linspace(
+            -1, args.enn * 1.2, int(2 * args.enn)
+        ).view(-1, 1)
+        target_cluster = torch.tensor(target_s)
+        target_area = torch.tensor(0.004*target_s)
+        target = (target_cluster, target_area)
+
+    args.target_dist = target
+    env = KMCEnv(args)
+    return env, actions, target
+
+
 class EnvArgs:
     def __init__(self):
         self.seed = 10
@@ -29,6 +65,17 @@ class EnvArgs:
         self.update_type = "global_ens"
         self.epsilon = 0.1
         self.target_dist = None
+        self.max_np = None
+
+    @classmethod
+    def from_config(cls, config):
+        args = cls()
+        for key, value in config.items():
+            try:
+                setattr(args, key, value)
+            except:
+                pass
+        return args
 
     def get_list(self):
         return [
@@ -81,6 +128,7 @@ class KMCEnv(Env):
         self.surface_coverage = self.sim.get_surface_coverage()
         self.update_type = args.update_type
         self.epsilon = args.epsilon
+        self.max_np = args.max_np
 
         if isinstance(args.target_dist, tuple):
             self.target_nclu = args.target_dist[0]
@@ -111,7 +159,7 @@ class KMCEnv(Env):
                 action_list.append(action[i].item())
             self.sim.take_action(action_list)
 
-    def step(self, n_steps, action, max_num_np):
+    def step(self, n_steps, action):
         self._take_action(action)
         self.sim.step(n_steps)
         self.time = self.sim.time
@@ -123,7 +171,7 @@ class KMCEnv(Env):
             box = box[:, :, 1]
             reward = self._get_reward(box, action)
             return box, reward
-        reward = self._get_reward(state, max_num_np)
+        reward = self._get_reward(state, self.max_np)
         return state, reward
 
     def _get_state(self):
@@ -140,7 +188,7 @@ class KMCEnv(Env):
         # idx: cluster size, value at idx: number of clusters of that size
         return sim_box, cluster_array
 
-    def _get_reward(self, state, actions, max_num_np=None):
+    def _get_reward(self, state, actions):
         """Return the reward"""
         if not self.update_type == "local_ens":
             nclu_diff = torch.abs(torch.sum(state) - self.target_nclu)
@@ -149,7 +197,7 @@ class KMCEnv(Env):
             area_diff = torch.abs(self.surface_coverage - self.target_area)
             area_reward = 1 - torch.clamp(area_diff / self.target_area, -1, 1)
 
-            num_np_reward = self.num_np / max_num_np if max_num_np else 0
+            num_np_reward = self.num_np / self.max_np if self.max_np else 0
             
             time_penalty = -min(self.time / 1e6, 1)
             
