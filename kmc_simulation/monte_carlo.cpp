@@ -117,6 +117,10 @@ void MC::get_possible_moves(Lattice& lat, RateCalculator& rc, const int idx) {
 
 
 void MC::get_new_max_move_rate(Lattice& lat, RateCalculator& rc, const int idx) {
+  /* Checks the total move rates for the neighbors of a given site.
+    Replaces the max rate if one of these totals is greater than the current one.
+    Input: lattice, rate calculator, site idx
+  */
   const int box_id = lat.sim_box[idx];
   const std::vector<int>& nl = lat.nl[idx];
   double max_rate = 0.0;
@@ -231,6 +235,57 @@ std::pair<int, int> MC::sample_move(Lattice& lat, RateCalculator& rc, int idx) {
       rc.total_energy += std::get<double>(move_rates[i][1]);
       int move = std::get<int>(move_rates[i][2]);
       get_new_max_move_rate(lat, rc, idx);
+      return {idx, move};
+    }
+  }
+  return {-1, -1}; // no valid moves found
+}
+
+
+std::pair<int, int> MC::sample_move(Lattice& lat, RateCalculator& rc, int idx, bool max_cutoff = false, double min_move_rate = 0.0) {
+  /* Sample a move given all possible transitions
+    Method for time-independent rates
+    Input: lattice, rate calculator
+    Return: index of nanoparticle to move, move type
+  */
+  // get rates for all possible moves, total_rate
+  for (int move : move_set) {
+    move_rates[move] = rc.get_rates(lat, idx, move); // returns rate [0] and energy [1]
+  }
+  sort_rates(move_rates);
+  double total_rates = 0.0;
+  for (const auto& sub : move_rates) { total_rates += std::get<double>(sub[0]); }
+  if (total_rates == 0.0) { return {-1, -1}; } // No valid moves found
+
+  double r;
+  // cutoff step for site choice based on max_move_rate: doesn't work with changing rates
+  if (max_cutoff) {
+    if (total_rates > max_move_rate) {
+      max_move_rate = total_rates;
+    } else {
+      r = uni_rng(rng);
+      if (r > (total_rates / max_move_rate)) {
+        return {-1, 0}; // reject move
+      }
+    }
+  // cutoff step for site choice based on minimum rate cutoff
+  } else {
+    if (total_rates < min_move_rate) {
+      return {-1, 0}; // reject move
+    }
+  }
+
+  // move selection
+  double r1 = uni_rng(rng);
+  double r2 = uni_rng(rng) * total_rates;
+  double total_rate = 0.0;
+  for (int i = 0; i < move_rates.size(); i++) {
+    total_rate += std::get<double>(move_rates[i][0]);
+    if (total_rate > r2) {
+      time += 1.0 / total_rates * (-log(r1));
+      rc.total_energy += std::get<double>(move_rates[i][1]);
+      int move = std::get<int>(move_rates[i][2]);
+      // get_new_max_move_rate(lat, rc, idx); // remove this when using minimum rate cutoff
       return {idx, move};
     }
   }

@@ -20,11 +20,13 @@ class MC {
     void get_possible_moves(Lattice&, RateCalculator&, const int);
     std::pair<int, int> sample_move(Lattice&, RateCalculator&, VariableField&, const int);
     std::pair<int, int> sample_move(Lattice&, RateCalculator&, const int);
+    std::pair<int, int> sample_move(Lattice&, RateCalculator&, const int, bool, double);
     void get_new_max_move_rate(Lattice&, RateCalculator&, const int);
     void reset();
 
     double time;
     double max_move_rate;
+    double min_move_rate;
     std::mt19937 rng;
     std::random_device rd;
     std::vector<int> move_set;

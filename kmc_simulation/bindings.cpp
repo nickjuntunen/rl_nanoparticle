@@ -67,6 +67,7 @@ PYBIND11_MODULE(kmc_lattice_gas, m) {
     .def("get_possible_moves", &MC::get_possible_moves)
     .def("sample_move", py::overload_cast<Lattice&, RateCalculator&, VariableField&, const int>(&MC::sample_move))
     .def("sample_move", py::overload_cast<Lattice&, RateCalculator&, const int>(&MC::sample_move))
+    .def("sample_move", py::overload_cast<Lattice&, RateCalculator&, const int, bool, double>(&MC::sample_move))
     .def_readwrite("time", &MC::time)
     .def_readwrite("max_move_rate", &MC::max_move_rate)
     .def_readwrite("move_set", &MC::move_set)

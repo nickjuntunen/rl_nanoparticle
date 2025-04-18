@@ -39,9 +39,10 @@ Simulation::Simulation(
   // Move the initialization code here
   take_action(ens, false);
   rc.total_energy = rc.calculate_total_lattice_energy(lat);
-  fprintf(stdout, "Total energy (intial): %f\n", rc.total_energy);
-  fprintf(stdout, "System initialized\n");
+  // fprintf(stdout, "Total energy (intial): %f\n", rc.total_energy);
+  // fprintf(stdout, "System initialized\n");
 }
+
 
 Simulation::~Simulation() {
   // Move the cleanup code here
@@ -59,7 +60,7 @@ void Simulation::step(int num_steps) {
     // if (time_dependent_rates) {
     //   move = mc.sample_move(lat, rc, vf, site_idx);
     // } else {
-    move = mc.sample_move(lat, rc, site_idx);
+    move = mc.sample_move(lat, rc, site_idx, false, 2.0); // using min move rate here, not really correct
     // }
 
     if (move.first == -1 && move.second == 0) goto beginning;
@@ -70,10 +71,10 @@ void Simulation::step(int num_steps) {
 
     lat.update_lattice_with_move(move);
 
-    if (steps % 10000 == 0) {
-      fprintf(stdout, "Step: %d; Time: %f; Number of nanoparticles: %d\n",
-          steps, mc.time, lat.num_np);
-    }
+    // if (steps % 10000 == 0) {
+    //   fprintf(stdout, "Step: %d; Time: %f; Number of nanoparticles: %d\n",
+    //       steps, mc.time, lat.num_np);
+    // }
     time = mc.time;
     steps++;
   }
@@ -108,7 +109,7 @@ void Simulation::reset() {
   site_idx = 0;
   area = n_side * n_side;
   time = 0.0;
-  fprintf(stdout, "System reset\n");
+  // fprintf(stdout, "System reset\n");
 }
 
 
